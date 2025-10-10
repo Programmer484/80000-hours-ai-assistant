@@ -8,7 +8,8 @@ import time
 from typing import List, Dict, Any
 from urllib.parse import quote
 from openai import OpenAI
-from rapidfuzz import fuzz, process, utils
+from rapidfuzz import fuzz, process
+from fuzzysearch import find_near_matches
 
 
 FUZZY_THRESHOLD = 95
@@ -16,7 +17,7 @@ FUZZY_THRESHOLD = 95
 def find_best_match_substring(quote: str, source_text: str) -> str:
     """Find the actual matching substring in source_text.
     
-    Uses rapidfuzz to find where the quote best matches and extract that substring.
+    Uses fuzzysearch to find where the quote matches and extract that exact substring.
     
     Args:
         quote: The text to find
@@ -25,28 +26,27 @@ def find_best_match_substring(quote: str, source_text: str) -> str:
     Returns:
         The matching substring from source_text
     """
-    # Normalize for comparison
+    # Normalize both texts
     quote_norm = normalize_text(quote)
     source_norm = normalize_text(source_text)
     
-    # Use partial_ratio to find the best match
-    # We need to find which substring of source best matches quote
-    quote_len = len(quote_norm)
-    best_match = quote  # fallback
-    best_score = 0
-    best_pos = 0
+    # Use fuzzysearch to find near matches
+    # max_l_dist is the maximum Levenshtein distance (edits) allowed
+    max_dist = max(1, len(quote_norm) // 20)  # Allow ~5% character differences
     
-    # Slide through source text with windows roughly the size of the quote
-    step = max(1, quote_len // 4)  # Overlap windows
-    for i in range(0, len(source_norm) - quote_len + 1, step):
-        window = source_norm[i:i + int(quote_len * 1.5)]  # Slightly larger window
-        score = fuzz.ratio(quote_norm.lower(), window.lower())
-        if score > best_score:
-            best_score = score
-            best_pos = i
-            best_match = source_text[i:i + int(quote_len * 1.5)]
+    try:
+        matches = find_near_matches(quote_norm.lower(), source_norm.lower(), max_l_dist=max_dist)
+        
+        if matches:
+            # Get the best match (first one, they're sorted by quality)
+            best_match = matches[0]
+            # Extract from the original source_text (not normalized)
+            return source_text[best_match.start:best_match.end].strip()
+    except:
+        pass
     
-    return best_match.strip()
+    # Fallback: return the quote if no match found
+    return quote
 
 
 def create_highlighted_url(base_url: str, quote_text: str) -> str:
