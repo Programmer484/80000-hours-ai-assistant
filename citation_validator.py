@@ -58,8 +58,19 @@ def create_highlighted_url(base_url: str, quote_text: str) -> str:
     Returns:
         URL with text fragment
     """
-    # Extract a meaningful snippet (first 50-80 chars work better for text fragments)
-    text_fragment = quote_text[:80].strip()
+    # Extract a meaningful snippet (first ~80 chars work better for text fragments)
+    # Cut at word boundaries to avoid breaking words mid-way
+    max_length = 80
+    if len(quote_text) > max_length:
+        # Find the last space before the cutoff
+        text_fragment = quote_text[:max_length]
+        last_space = text_fragment.rfind(' ')
+        if last_space > 0:  # If we found a space, cut there
+            text_fragment = text_fragment[:last_space]
+    else:
+        text_fragment = quote_text
+    
+    text_fragment = text_fragment.strip()
     
     # Encode everything for maximum compatibility
     # quote() with safe='' still preserves unreserved chars (- . _ ~)
