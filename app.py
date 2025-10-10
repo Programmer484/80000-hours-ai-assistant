@@ -21,7 +21,7 @@ def chat_interface(question: str, show_context: bool = False):
             display_text = citation.get('matched_text', citation['quote'])
             citations_text += f"**[{i}]** {citation['title']}\n\n"
             citations_text += f"> \"{display_text}\"\n\n"
-            citations_text += f"🔗 [Read more on 80,000 Hours]({citation['url']})\n\n"
+            citations_text += f"🔗 [View highlighted quote on 80,000 Hours →]({citation['url']})\n\n"
     
     # Add validation warnings if any
     if result.get("validation_errors"):
