@@ -35,7 +35,8 @@ def chat_interface(question: str, show_context: bool = False):
     
     return answer, citations_text
 
-# Create Gradio interface
+
+# --- Build Gradio UI ---
 with gr.Blocks(title="80,000 Hours Q&A", theme=gr.themes.Soft()) as demo:
     gr.Markdown(
         """
@@ -45,7 +46,7 @@ with gr.Blocks(title="80,000 Hours Q&A", theme=gr.themes.Soft()) as demo:
         This RAG system retrieves relevant content from the 80,000 Hours knowledge base and generates answers with validated citations.
         """
     )
-    
+
     with gr.Row():
         with gr.Column():
             question_input = gr.Textbox(
@@ -58,7 +59,7 @@ with gr.Blocks(title="80,000 Hours Q&A", theme=gr.themes.Soft()) as demo:
                 value=False
             )
             submit_btn = gr.Button("Ask", variant="primary")
-    
+
     with gr.Row():
         with gr.Column():
             answer_output = gr.Textbox(
@@ -66,26 +67,23 @@ with gr.Blocks(title="80,000 Hours Q&A", theme=gr.themes.Soft()) as demo:
                 lines=10,
                 show_copy_button=True
             )
-        
+
         with gr.Column():
-            citations_output = gr.Markdown(
-                label="Citations & Sources"
-            )
-    
+            citations_output = gr.Markdown(label="Citations & Sources")
+
     # Event handlers
     submit_btn.click(
         fn=chat_interface,
         inputs=[question_input, show_context_checkbox],
         outputs=[answer_output, citations_output]
     )
-    
+
     question_input.submit(
         fn=chat_interface,
         inputs=[question_input, show_context_checkbox],
         outputs=[answer_output, citations_output]
     )
-    
-    # Example questions
+
     gr.Examples(
         examples=[
             "Should I plan my entire career?",
@@ -96,7 +94,16 @@ with gr.Blocks(title="80,000 Hours Q&A", theme=gr.themes.Soft()) as demo:
         inputs=question_input
     )
 
+# --- Launch Logic ---
 if __name__ == "__main__":
-    # HF Spaces handles the server configuration
-    demo.launch()
+    # Detect if running on Hugging Face Spaces (or other managed env)
+    in_spaces = os.environ.get("SPACE_ID") is not None or os.environ.get("SYSTEM") == "spaces"
 
+    if in_spaces:
+        demo.launch()  # Use platform defaults
+    else:
+        demo.launch(
+            server_name="0.0.0.0",
+            server_port=7860,
+            share=False
+        )
