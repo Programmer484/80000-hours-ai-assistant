@@ -26,21 +26,22 @@ def find_best_match_substring(quote: str, source_text: str) -> str:
     Returns:
         The matching substring from source_text
     """
-    # Normalize both texts
+    # Normalize quote for better matching, but search directly in original source
     quote_norm = normalize_text(quote)
-    source_norm = normalize_text(source_text)
     
-    # Use fuzzysearch to find near matches
+    # Use fuzzysearch to find near matches in the ORIGINAL text
+    # This preserves punctuation and exact formatting
     # max_l_dist is the maximum Levenshtein distance (edits) allowed
-    max_dist = max(1, len(quote_norm) // 20)  # Allow ~5% character differences
+    max_dist = max(2, len(quote_norm) // 15)  # Allow ~6-7% character differences
     
     try:
-        matches = find_near_matches(quote_norm.lower(), source_norm.lower(), max_l_dist=max_dist)
+        # Search in the original source text (case-insensitive but preserves punctuation)
+        matches = find_near_matches(quote_norm, source_text, max_l_dist=max_dist)
         
         if matches:
             # Get the best match (first one, they're sorted by quality)
             best_match = matches[0]
-            # Extract from the original source_text (not normalized)
+            # Extract from the original source_text with exact punctuation
             return source_text[best_match.start:best_match.end].strip()
     except:
         pass
