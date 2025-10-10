@@ -6,7 +6,7 @@ from config import MODEL_NAME
 
 BUFFER_SIZE = 3
 BREAKPOINT_PERCENTILE_THRESHOLD = 87
-NUMBER_OF_ARTICLES = 1
+NUMBER_OF_ARTICLES = 86
 
 def load_articles(json_path="articles.json", n=None):
     """Load articles from JSON file. Optionally load only first N articles."""
@@ -31,8 +31,8 @@ def make_jsonl(articles, out_path="article_chunks.jsonl"):
     embed_model = HuggingFaceEmbedding(model_name=MODEL_NAME)
     
     with open(out_path, "w", encoding="utf-8") as f:
-        for article in articles:
-            print(f"Chunking: {article['title']}")
+        for idx, article in enumerate(articles, 1):
+            print(f"Chunking ({idx}/{len(articles)}): {article['title']}")
             chunks = chunk_text_semantic(article["text"], embed_model)
             for i, chunk in enumerate(chunks, 1):
                 record = {

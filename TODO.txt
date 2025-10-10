@@ -1,0 +1,7 @@
+Technical:
+- Test source citation
+- Setup demo website
+- Post video on Linkedin & send outreach messages
+    - have u ever wondered what to do about AI?
+
+- Fix the dates that trafilatura scrapes
