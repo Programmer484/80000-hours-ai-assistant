@@ -4,7 +4,7 @@ from typing import Dict, Any
 from dotenv import load_dotenv
 from qdrant_client import QdrantClient
 from sentence_transformers import SentenceTransformer
-from citation_validator import generate_answer_with_citations, format_citations_display, normalize_text
+from citation_validator import generate_answer_with_citations, format_citations_display
 from config import MODEL_NAME, COLLECTION_NAME
 
 load_dotenv()
@@ -112,16 +112,7 @@ def ask(question: str, show_context: bool = False) -> Dict[str, Any]:
     print(f"Citation Stats: {result['valid_citations']}/{result['total_citations']} citations validated")
     print("=" * 80)
     
-    # Save validation results to JSON
-    def normalize_dict(obj):
-        """Recursively normalize all strings in a dict/list structure."""
-        if isinstance(obj, dict):
-            return {k: normalize_dict(v) for k, v in obj.items()}
-        elif isinstance(obj, list):
-            return [normalize_dict(item) for item in obj]
-        elif isinstance(obj, str):
-            return normalize_text(obj)
-        return obj
+
     
     validation_output = {
         "question": question,
@@ -139,6 +130,7 @@ def ask(question: str, show_context: bool = False) -> Dict[str, Any]:
                 "title": hit.payload['title'],
                 "url": hit.payload['url'],
                 "chunk_id": hit.payload.get('chunk_id'),
+                "similarity_score": hit.score,  # Cosine similarity from vector search
                 "text": hit.payload['text']
             }
             for i, hit in enumerate(results, 1)
@@ -146,7 +138,7 @@ def ask(question: str, show_context: bool = False) -> Dict[str, Any]:
     }
     
     # Normalize all text in the output
-    validation_output = normalize_dict(validation_output)
+    validation_output = validation_output
     
     import json
     with open("validation_results.json", "w", encoding="utf-8") as f:

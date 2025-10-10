@@ -26,17 +26,13 @@ def find_best_match_substring(quote: str, source_text: str) -> str:
     Returns:
         The matching substring from source_text
     """
-    # Normalize quote for better matching, but search directly in original source
-    quote_norm = normalize_text(quote)
-    
-    # Use fuzzysearch to find near matches in the ORIGINAL text
-    # This preserves punctuation and exact formatting
+    # Use fuzzysearch to find near matches directly in the original text
     # max_l_dist is the maximum Levenshtein distance (edits) allowed
-    max_dist = max(2, len(quote_norm) // 15)  # Allow ~6-7% character differences
+    max_dist = max(2, len(quote) // 15)  # Allow ~6-7% character differences
     
     try:
-        # Search in the original source text (case-insensitive but preserves punctuation)
-        matches = find_near_matches(quote_norm, source_text, max_l_dist=max_dist)
+        # Search directly - fuzzysearch handles minor differences like quote types
+        matches = find_near_matches(quote, source_text, max_l_dist=max_dist)
         
         if matches:
             # Get the best match (first one, they're sorted by quality)
@@ -57,33 +53,24 @@ def create_highlighted_url(base_url: str, quote_text: str) -> str:
     
     Args:
         base_url: The base article URL
-        quote_text: The text to highlight
+        quote_text: The text to highlight (should be the exact text from source)
         
     Returns:
         URL with text fragment
     """
-    # Take first ~100 characters of quote for the URL (browsers have limits)
-    # and clean up for URL encoding
-    text_fragment = quote_text[:100].strip()
-    encoded_text = quote(text_fragment)
+    # Extract a meaningful snippet (first 50-80 chars work better for text fragments)
+    text_fragment = quote_text[:80].strip()
+    
+    # Encode everything for maximum compatibility
+    # quote() with safe='' still preserves unreserved chars (- . _ ~)
+    # So we manually encode those too
+    encoded_text = quote(text_fragment, safe='')
+    # Manually encode the unreserved chars that quote() preserves
+    encoded_text = encoded_text.replace('-', '%2D')
+    encoded_text = encoded_text.replace('.', '%2E')
+    encoded_text = encoded_text.replace('_', '%5F')
+    encoded_text = encoded_text.replace('~', '%7E')
     return f"{base_url}#:~:text={encoded_text}"
-
-
-def normalize_text(text: str) -> str:
-    """Normalize text for comparison by handling whitespace and punctuation variants."""
-    # Normalize different dash types to standard hyphen
-    text = text.replace('–', '-')  # en-dash
-    text = text.replace('—', '-')  # em-dash
-    text = text.replace('−', '-')  # minus sign
-    # Normalize different apostrophe/quote types to standard ASCII
-    text = text.replace(''', "'")  # curly apostrophe
-    text = text.replace(''', "'")  # left single quote
-    text = text.replace('"', '"')  # left double quote
-    text = text.replace('"', '"')  # right double quote
-    # Normalize whitespace
-    text = " ".join(text.split())
-    return text
-
 
 def validate_citation(quote: str, source_chunks: List[Any], source_id: int) -> Dict[str, Any]:
     """Validate that a quote exists in the specified source chunk.
@@ -105,12 +92,11 @@ def validate_citation(quote: str, source_chunks: List[Any], source_id: int) -> D
             "source_text": None
         }
     
-    quote_clean = normalize_text(quote).lower()
 
     
     # Step 1: Check claimed source first (fast path)
-    source_text = normalize_text(source_chunks[source_id - 1].payload['text']).lower()
-    claimed_score = fuzz.partial_ratio(quote_clean, source_text)
+    source_text = source_chunks[source_id - 1].payload['text']
+    claimed_score = fuzz.partial_ratio(quote, source_text)
     
     if claimed_score >= FUZZY_THRESHOLD:
         # Find the actual matching substring in the source
@@ -128,8 +114,7 @@ def validate_citation(quote: str, source_chunks: List[Any], source_id: int) -> D
     for idx, chunk in enumerate(source_chunks, 1):
         if idx == source_id:
             continue  # Already checked
-        chunk_text = normalize_text(chunk.payload['text']).lower()
-        score = fuzz.partial_ratio(quote_clean, chunk_text)
+        score = fuzz.partial_ratio(quote, chunk.payload['text'])
         if score >= FUZZY_THRESHOLD:
             # Find the actual matching substring in the source
             matched_substring = find_best_match_substring(quote, chunk.payload['text'])
