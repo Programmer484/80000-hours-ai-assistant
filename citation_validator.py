@@ -8,10 +8,42 @@ import time
 from typing import List, Dict, Any
 from urllib.parse import quote
 from openai import OpenAI
-from rapidfuzz import fuzz
+from rapidfuzz import fuzz, process
 
 
 FUZZY_THRESHOLD = 95
+
+def extract_best_match(quote: str, source_text: str) -> str:
+    """Extract the best matching substring from source text.
+    
+    Args:
+        quote: The quote to find
+        source_text: The source text to search in
+        
+    Returns:
+        The best matching substring from source_text
+    """
+    quote_clean = normalize_text(quote).lower()
+    source_clean = normalize_text(source_text).lower()
+    
+    # Try to find the best matching substring
+    # We'll split source into sentences and find the best match
+    import re
+    sentences = re.split(r'(?<=[.!?])\s+', source_text)
+    
+    # Find best matching sentence or sentence group
+    best_match = quote
+    best_score = 0
+    
+    for i in range(len(sentences)):
+        for j in range(i + 1, min(i + 5, len(sentences) + 1)):  # Check up to 4 consecutive sentences
+            candidate = ' '.join(sentences[i:j])
+            score = fuzz.partial_ratio(quote_clean, normalize_text(candidate).lower())
+            if score > best_score:
+                best_score = score
+                best_match = candidate
+    
+    return best_match.strip()
 
 def create_highlighted_url(base_url: str, quote_text: str) -> str:
     """Create a URL with text fragment that highlights the quoted text.
@@ -76,9 +108,12 @@ def validate_citation(quote: str, source_chunks: List[Any], source_id: int) -> D
     claimed_score = fuzz.partial_ratio(quote_clean, source_text)
     
     if claimed_score >= FUZZY_THRESHOLD:
+        # Extract the actual matched text from source
+        matched_text = extract_best_match(quote, source_chunks[source_id - 1].payload['text'])
         return {
             "valid": True,
             "quote": quote,
+            "matched_text": matched_text,
             "source_id": source_id,
             "title": source_chunks[source_id - 1].payload['title'],
             "url": source_chunks[source_id - 1].payload['url'],
@@ -91,9 +126,12 @@ def validate_citation(quote: str, source_chunks: List[Any], source_id: int) -> D
         chunk_text = normalize_text(chunk.payload['text']).lower()
         score = fuzz.partial_ratio(quote_clean, chunk_text)
         if score >= FUZZY_THRESHOLD:
+            # Extract the actual matched text from source
+            matched_text = extract_best_match(quote, chunk.payload['text'])
             return {
                 "valid": True,
                 "quote": quote,
+                "matched_text": matched_text,
                 "source_id": idx,
                 "title": chunk.payload['title'],
                 "url": chunk.payload['url'],
@@ -269,15 +307,17 @@ Provide your answer in JSON format with exact quotes from the sources."""
         validation_result = validate_citation(quote, results, source_id)
         
         if validation_result["valid"]:
-            # Create URL with text fragment to highlight the quote
+            # Create URL with text fragment to highlight the matched text
+            matched_text = validation_result.get("matched_text", quote)
             highlighted_url = create_highlighted_url(
                 validation_result["url"], 
-                quote
+                matched_text
             )
             citation_entry = {
                 "citation_id": citation_id,
                 "source_id": validation_result["source_id"],
-                "quote": quote,
+                "quote": quote,  # AI's claimed quote
+                "matched_text": matched_text,  # Actual text from source
                 "title": validation_result["title"],
                 "url": highlighted_url,
                 "similarity_score": validation_result["similarity_score"]

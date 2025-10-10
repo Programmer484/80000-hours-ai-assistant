@@ -17,9 +17,11 @@ def chat_interface(question: str, show_context: bool = False):
     if result["citations"]:
         citations_text += "\n\n---\n\n### 📚 Citations\n\n"
         for i, citation in enumerate(result["citations"], 1):
-            citations_text += f"**[{i}]** {citation['title']}\n"
-            citations_text += f"> \"{citation['quote']}\"\n"
-            citations_text += f"🔗 [{citation['url']}]({citation['url']})\n\n"
+            # Use matched_text (actual source text) instead of AI's quote
+            display_text = citation.get('matched_text', citation['quote'])
+            citations_text += f"**[{i}]** {citation['title']}\n\n"
+            citations_text += f"> \"{display_text}\"\n\n"
+            citations_text += f"🔗 [Read more on 80,000 Hours]({citation['url']})\n\n"
     
     # Add validation warnings if any
     if result.get("validation_errors"):
