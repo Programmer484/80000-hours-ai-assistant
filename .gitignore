@@ -48,3 +48,4 @@ Thumbs.db
 flagged/
 
 TODO.txt
+__pycache__/
