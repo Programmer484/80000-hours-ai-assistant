@@ -172,81 +172,39 @@ def generate_answer_with_citations(
     """
     client = OpenAI(api_key=openai_api_key)
     
-    system_prompt = """You are a helpful assistant that answers questions based on 80,000 Hours articles.
+    system_prompt = """Answer the user's question using ONLY the provided sources from 80,000 Hours articles.
 
-You MUST return your response in valid JSON format with this exact structure:
+STEP 1: Write your answer
+- Write a clear, concise answer to the question
+- Use a natural, conversational tone
+- After EACH substantive claim, add [1], [2], [3], etc. in order
+- Example: "Career capital is important [1]. You can build it through work [2]."
+
+STEP 2: Provide citations
+- For each [N] in your answer, provide a citation with:
+  * citation_id: The number from your answer (1 for [1], 2 for [2], etc.)
+  * source_id: Which source it came from (see [Source N] in context below)
+  * quote: Copy the EXACT sentences from that source, word-for-word
+
+CRITICAL RULES:
+1. Number citations in ORDER: [1] is first, [2] is second, [3] is third, etc.
+2. Copy quotes EXACTLY - no changes, no ellipses, no paraphrasing
+3. Match source_id to where you found the quote ([Source 1] → source_id: 1)
+4. Each quote must be complete sentences from the source
+
+OUTPUT FORMAT (valid JSON):
 {
-  "answer": "Your conversational answer with inline citation markers like [1], [2]",
-  "citations": [
-    {
-      "citation_id": 1,
-      "source_id": 1,
-      "quote": "exact sentence or sentences from the source that support your claim"
-    }
-  ]
-}
-
-CITATION HARD RULES:
-1. Copy quotes EXACTLY as they appear in the provided context
-   - NO ellipses (...)
-   - NO paraphrasing
-   - NO punctuation changes
-   - Word-for-word, character-for-character accuracy required
-
-2. If the needed support is in two places, use TWO SEPARATE citation entries
-   - Do NOT combine quotes from different sources or different parts of text
-   - Each citation must contain a continuous, unmodified quote
-
-3. Use the CORRECT source_id from the provided list
-   - Source IDs are numbered [Source 1], [Source 2], etc. in the context
-   - Verify the source_id matches where you found the quote
-
-CRITICAL RULES FOR CITATIONS:
-- For EVERY claim (advice, fact, statistic, recommendation), add an inline citation [1], [2], etc.
-- For each citation, extract and quote the EXACT sentence(s) from the source that directly support your claim
-- Find the specific sentence(s) in the source that contain the relevant information
-- Each quote should be at least 20 characters and contain complete sentence(s)
-- Multiple consecutive sentences can be quoted if needed to fully support the claim
-
-WRITING STYLE:
-- Write concisely in a natural, conversational tone
-- You may paraphrase information in your answer, but always cite the source with exact quotes
-- You can add brief context/transitions without citations, but cite all substantive claims
-- If the sources don't fully answer the question, acknowledge that briefly
-- Only use information from the provided sources - don't add external knowledge
-
-EXAMPLES:
-
-Example 1 - Single claim:
-{
-  "answer": "One of the most effective ways to build career capital is to work at a high-performing organization where you can learn from talented colleagues [1].",
+  "answer": "Your answer with [1], [2], [3] after each claim.",
   "citations": [
     {
       "citation_id": 1,
       "source_id": 2,
-      "quote": "Working at a high-performing organization is one of the fastest ways to build career capital because you learn from talented colleagues and develop strong professional networks."
-    }
-  ]
-}
-
-Example 2 - Multiple claims:
-{
-  "answer": "AI safety is considered one of the most pressing problems of our time [1]. Experts estimate that advanced AI could be developed within the next few decades [2], and there's a significant talent gap in the field [3]. This means your contributions could have an outsized impact.",
-  "citations": [
-    {
-      "citation_id": 1,
-      "source_id": 1,
-      "quote": "We believe that risks from artificial intelligence are one of the most pressing problems facing humanity today."
+      "quote": "Exact sentence from the source."
     },
     {
       "citation_id": 2,
-      "source_id": 1,
-      "quote": "Many AI researchers believe there's a 10-50% chance of human-level AI being developed by 2050."
-    },
-    {
-      "citation_id": 3,
-      "source_id": 3,
-      "quote": "There are currently fewer than 300 people working full-time on technical AI safety research, despite the field's critical importance."
+      "source_id": 5,
+      "quote": "Another exact sentence from a different source."
     }
   ]
 }"""
@@ -295,6 +253,7 @@ Provide your answer in JSON format with exact quotes from the sources."""
             "validation_errors": ["Failed to parse JSON response"]
         }
     
+
     # Validate each citation
     validation_start = time.time()
     validated_citations = []

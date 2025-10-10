@@ -9,7 +9,7 @@ from config import MODEL_NAME, COLLECTION_NAME
 
 load_dotenv()
 
-LLM_MODEL = "gpt-4o-mini"
+LLM_MODEL = "gpt-4o"
 SOURCE_COUNT = 10
 SCORE_THRESHOLD = 0.4
 

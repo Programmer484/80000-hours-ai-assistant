@@ -24,7 +24,7 @@ A Retrieval-Augmented Generation (RAG) system that answers career-related questi
 
 1. Your question is converted to a vector embedding
 2. Relevant article chunks are retrieved from Qdrant vector database
-3. GPT-4o-mini generates an answer with citations
+3. GPT-4o generates an answer with citations
 4. Citations are validated against source material
 5. You get an answer with verified quotes and source links
 
