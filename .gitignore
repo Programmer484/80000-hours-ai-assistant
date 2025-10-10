@@ -35,7 +35,7 @@ env/
 *.swo
 *~
 
-# Data files (don't commit large data files to HF Spaces)
+# Data files (large, don't commit)
 articles.json
 article_chunks.jsonl
 validation_results.json
@@ -46,3 +46,5 @@ Thumbs.db
 
 # Gradio
 flagged/
+
+TODO.txt

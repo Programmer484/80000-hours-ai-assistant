@@ -29,7 +29,11 @@ def load_embedding_model():
 def create_collection(client, collection_name=COLLECTION_NAME, embedding_dim=EMBEDDING_DIM):
     print(f"Creating collection '{collection_name}'...")
     try:
-        client.recreate_collection(
+        if client.collection_exists(collection_name):
+            print(f"Collection '{collection_name}' exists. Deleting...")
+            client.delete_collection(collection_name)
+        
+        client.create_collection(
             collection_name=collection_name,
             vectors_config=VectorParams(size=embedding_dim, distance=Distance.COSINE),
         )
