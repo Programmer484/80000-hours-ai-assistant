@@ -10,7 +10,7 @@ from rapidfuzz import fuzz
 from fuzzysearch import find_near_matches
 
 
-FUZZY_THRESHOLD = 95
+FUZZY_THRESHOLD = 90
 
 def find_best_match_substring(quote: str, source_text: str) -> str:
     """Find the actual matching substring in source_text.
@@ -56,23 +56,27 @@ def create_highlighted_url(base_url: str, quote_text: str) -> str:
     Returns:
         URL with text fragment
     """
+    # Take only the first line/paragraph (text fragments can't match across elements)
+    first_line = quote_text.split('\n')[0].strip()
+    
+    # Remove bullet point markers (they're formatting, not content)
+    if first_line.startswith('- '):
+        first_line = first_line[2:].strip()
+    
     # Extract a meaningful snippet (first ~80 chars work better for text fragments)
     # Cut at word boundaries to avoid breaking words mid-way
     max_length = 80
-    if len(quote_text) > max_length:
+    if len(first_line) > max_length:
         # Find the last space before the cutoff
-        text_fragment = quote_text[:max_length]
+        text_fragment = first_line[:max_length]
         last_space = text_fragment.rfind(' ')
         if last_space > 0:  # If we found a space, cut there
             text_fragment = text_fragment[:last_space]
     else:
-        text_fragment = quote_text
+        text_fragment = first_line
     
     text_fragment = text_fragment.strip()
     
-    # Encode everything for maximum compatibility
-    # quote() with safe='' still preserves unreserved chars (- . _ ~)
-    # So we manually encode those too
     encoded_text = quote(text_fragment, safe='')
     # Manually encode the unreserved chars that quote() preserves
     encoded_text = encoded_text.replace('-', '%2D')
@@ -123,7 +127,7 @@ def build_citation_entry(citation: Dict[str, Any], validation_result: Dict[str, 
     Returns:
         Complete citation entry with URL and metadata
     """
-    matched_text = validation_result.get("matched_text", citation.get("quote", ""))
+    matched_text = validation_result["matched_text"]
     highlighted_url = create_highlighted_url(
         validation_result["url"], 
         matched_text
@@ -135,10 +139,9 @@ def build_citation_entry(citation: Dict[str, Any], validation_result: Dict[str, 
         "matched_text": matched_text,  # Actual text from source
         "title": validation_result["title"],
         "url": highlighted_url,
-        "similarity_score": validation_result["similarity_score"]
+        "fuzzy_match_score": validation_result["fuzzy_match_score"],
+        "remapped": validation_result.get("remapped", False)
     }
-    if validation_result.get("remapped"):
-        citation_entry["remapped_from"] = validation_result["original_source_id"]
     return citation_entry
 
 def process_citations(citations: List[Dict[str, Any]], source_chunks: List[Any]) -> Dict[str, Any]:
@@ -165,17 +168,31 @@ def process_citations(citations: List[Dict[str, Any]], source_chunks: List[Any])
             citation_entry = build_citation_entry(citation, validation_result)
             validated_citations.append(citation_entry)
         else:
-            validation_errors.append({
-                "citation_id": citation_id,
-                "reason": validation_result['reason'],
-                "claimed_quote": quote,
-                "source_text": validation_result.get('source_text')
-            })
+            # Add citation_id to validation result for tracking
+            validation_result["citation_id"] = citation_id
+            validation_errors.append(validation_result)
     
     return {
         "validated_citations": validated_citations,
         "validation_errors": validation_errors
     }
+
+def _build_valid_result(quote: str, chunk: Any, chunk_id: int, score: float, 
+                        remapped: bool = False) -> Dict[str, Any]:
+    """Build a valid citation result dict."""
+    matched_substring = find_best_match_substring(quote, chunk.payload['text'])
+    result = {
+        "valid": True,
+        "quote": quote,
+        "matched_text": matched_substring,
+        "source_id": chunk_id,
+        "title": chunk.payload['title'],
+        "url": chunk.payload['url'],
+        "fuzzy_match_score": score
+    }
+    if remapped:
+        result["remapped"] = True
+    return result
 
 def validate_citation(quote: str, source_chunks: List[Any], source_id: int) -> Dict[str, Any]:
     """Validate that a quote exists in the specified source chunk.
@@ -197,51 +214,30 @@ def validate_citation(quote: str, source_chunks: List[Any], source_id: int) -> D
             "source_text": None
         }
     
-
-    
     # Step 1: Check claimed source first (fast path)
     source_text = source_chunks[source_id - 1].payload['text']
     claimed_score = fuzz.partial_ratio(quote, source_text)
     
     if claimed_score >= FUZZY_THRESHOLD:
-        # Find the actual matching substring in the source
-        matched_substring = find_best_match_substring(quote, source_chunks[source_id - 1].payload['text'])
-        return {
-            "valid": True,
-            "quote": quote,
-            "matched_text": matched_substring,  # The actual matching text from 80k Hours
-            "source_id": source_id,
-            "title": source_chunks[source_id - 1].payload['title'],
-            "url": source_chunks[source_id - 1].payload['url'],
-            "similarity_score": claimed_score
-        }
+        return _build_valid_result(quote, source_chunks[source_id - 1], source_id, claimed_score)
     
+    # Step 2: Search all other sources for remapping
     for idx, chunk in enumerate(source_chunks, 1):
         if idx == source_id:
             continue  # Already checked
         score = fuzz.partial_ratio(quote, chunk.payload['text'])
         if score >= FUZZY_THRESHOLD:
-            # Find the actual matching substring in the source
-            matched_substring = find_best_match_substring(quote, chunk.payload['text'])
-            return {
-                "valid": True,
-                "quote": quote,
-                "matched_text": matched_substring,  # The actual matching text from 80k Hours
-                "source_id": idx,
-                "title": chunk.payload['title'],
-                "url": chunk.payload['url'],
-                "similarity_score": score,
-                "remapped": True,
-                "original_source_id": source_id
-            }
+            return _build_valid_result(quote, chunk, idx, score, remapped=True)
     
-    # Validation failed - report best score from claimed source
+    # Validation failed - find closest match for debugging
+    matched_text = find_best_match_substring(quote, source_text)
     return {
         "valid": False,
         "quote": quote,
         "source_id": source_id,
-        "reason": f"Quote not found in any source (claimed source: {claimed_score:.1f}% similarity)",
-        "source_text": source_chunks[source_id - 1].payload['text']
+        "reason": f"Quote not found in any source (claimed source: {claimed_score:.1f}% fuzzy match)",
+        "matched_text": matched_text,
+        "fuzzy_match_score": claimed_score
     }
 
 
@@ -263,12 +259,12 @@ def format_citations_display(citations: List[Dict[str, Any]]) -> str:
     citation_parts = []
     for cit in sorted_citations:
         marker = f"[{cit['citation_id']}]"
-        score = cit.get('similarity_score', 100)
+        score = cit.get('fuzzy_match_score', 100)
         
-        if cit.get('remapped_from'):
-            note = f" ({score:.1f}% match, remapped: source {cit['remapped_from']} → {cit['source_id']})"
+        if cit.get('remapped'):
+            note = f" ({score:.1f}% fuzzy match, remapped)"
         else:
-            note = f" ({score:.1f}% match)"
+            note = f" ({score:.1f}% fuzzy match)"
         
         citation_parts.append(
             f"{marker} {cit['title']}{note}\n"

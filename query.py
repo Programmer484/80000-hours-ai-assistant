@@ -17,6 +17,8 @@ SCORE_THRESHOLD = 0.4
 
 def retrieve_context(question):
     """Retrieve relevant chunks from Qdrant."""
+    start = time.time()
+    
     client = QdrantClient(
         url=os.getenv("QDRANT_URL"),
         api_key=os.getenv("QDRANT_API_KEY"),
@@ -31,6 +33,9 @@ def retrieve_context(question):
         limit=SOURCE_COUNT,
         score_threshold=SCORE_THRESHOLD,
     )
+    
+    elapsed = (time.time() - start) * 1000
+    print(f"[TIMING] Retrieval: {elapsed:.0f}ms")
     
     return results.points
 
@@ -78,13 +83,17 @@ def generate_answer_with_citations(
         STEP 2: Provide citations
         - For each [N] in your answer, provide a citation with:
         * citation_id: The number from your answer (1 for [1], 2 for [2], etc.)
-        * source_id: Which source it came from (see [Source N] in context below)
+        * source_id: Which source it came from (match the [Source N] label exactly)
         * quote: Copy the EXACT sentences from that source, word-for-word
 
+        EXAMPLE - If you found text in [Source 3]:
+        - Your answer: "Career capital helps you succeed [1]."
+        - Your citation: {"citation_id": 1, "source_id": 3, "quote": "Career capital includes..."}
+        
         CRITICAL RULES:
         1. Number citations in ORDER: [1] is first, [2] is second, [3] is third, etc.
         2. Copy quotes EXACTLY - no changes, no ellipses, no paraphrasing
-        3. Match source_id to where you found the quote ([Source 1] → source_id: 1)
+        3. source_id MUST match the source number: [Source 1] → source_id: 1, [Source 5] → source_id: 5
         4. Each quote must be complete sentences from the source
 
         OUTPUT FORMAT (valid JSON):
@@ -128,7 +137,7 @@ def generate_answer_with_citations(
     parsed = parse_llm_response(response.choices[0].message.content)
     if "validation_errors" in parsed:
         return {
-            "answer": parsed["answer"],
+            "answer": parsed["answer"], # raw llm response
             "citations": [],
             "validation_errors": parsed["validation_errors"],
             "total_citations": 0,
@@ -139,7 +148,10 @@ def generate_answer_with_citations(
     citations = parsed.get("citations", [])
     
     # Validate citations
+    validation_start = time.time()
     result = process_citations(citations, results)
+    validation_time = (time.time() - validation_start) * 1000
+    print(f"[TIMING] Validation: {validation_time:.0f}ms")
     
     return {
         "answer": answer,
@@ -166,7 +178,7 @@ def save_validation_results(question: str, result: Dict[str, Any], results: List
                 "title": hit.payload['title'],
                 "url": hit.payload['url'],
                 "chunk_id": hit.payload.get('chunk_id'),
-                "similarity_score": hit.score,
+                "cosine_similarity": hit.score,  # Vector similarity from Qdrant
                 "text": hit.payload['text']
             }
             for i, hit in enumerate(results, 1)
@@ -212,6 +224,8 @@ def display_results(question: str, result: Dict[str, Any], context: str = None):
 
 def ask(question: str, show_context: bool = False) -> Dict[str, Any]:
     """Main RAG function: retrieve context and generate answer with validated citations."""
+    total_start = time.time()
+    
     results = retrieve_context(question)
     if not results:
         print("No relevant sources found above the score threshold.")
@@ -231,6 +245,9 @@ def ask(question: str, show_context: bool = False) -> Dict[str, Any]:
         llm_model=LLM_MODEL,
         openai_api_key=os.getenv("OPENAI_API_KEY")
     )
+    
+    total_time = (time.time() - total_start) * 1000
+    print(f"[TIMING] Total: {total_time:.0f}ms")
     
     # Display results
     display_results(question, result, context if show_context else None)
