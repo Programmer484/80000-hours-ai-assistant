@@ -36,9 +36,8 @@ env/
 *~
 
 # Data files (large, don't commit)
-articles.json
-article_chunks.jsonl
-validation_results.json
+*.json
+*.jsonl
 
 # OS
 .DS_Store
@@ -47,5 +46,5 @@ Thumbs.db
 # Gradio
 flagged/
 
-TODO.txt
-__pycache__/
+.txt
+sample_extractions/
