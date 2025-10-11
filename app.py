@@ -1,6 +1,6 @@
 import gradio as gr
 import os
-from rag_chat import ask
+from query import ask
 
 def chat_interface(question: str, show_context: bool = False):
     """Process question and return formatted response."""
@@ -87,12 +87,12 @@ with gr.Blocks(title="80,000 Hours Q&A", theme=gr.themes.Soft()) as demo:
     )
 
     gr.Examples(
-        examples=[
-            "Should I plan my entire career?",
-            "What career advice does 80k give?",
-            "How can I have more impact with my career?",
-            "What are the world's most pressing problems?",
-        ],
+            examples = [
+                "What skills will be most in demand in the next 5–10 years?",
+                "What careers will be most affected by AI?",
+                "How can I work on the world’s most pressing problems?",
+                "How do I figure out what I want to do with my life?",
+            ],
         inputs=question_input
     )
 

@@ -4,11 +4,9 @@ This module handles structured citations with validation to prevent hallucinatio
 """
 
 import json
-import time
 from typing import List, Dict, Any
 from urllib.parse import quote
-from openai import OpenAI
-from rapidfuzz import fuzz, process
+from rapidfuzz import fuzz
 from fuzzysearch import find_near_matches
 
 
@@ -83,6 +81,102 @@ def create_highlighted_url(base_url: str, quote_text: str) -> str:
     encoded_text = encoded_text.replace('~', '%7E')
     return f"{base_url}#:~:text={encoded_text}"
 
+def parse_llm_response(response_content: str) -> Dict[str, Any]:
+    """Parse and validate LLM JSON response.
+    
+    Args:
+        response_content: Raw JSON string from LLM
+        
+    Returns:
+        Dict with answer and citations, or error information
+    """
+    try:
+        result = json.loads(response_content)
+        # Enforce strict shape: must have 'answer' (str) and 'citations' (list of dicts)
+        if not isinstance(result, dict) or 'answer' not in result or 'citations' not in result:
+            return {
+                "answer": response_content,
+                "citations": [],
+                "validation_errors": ["Response JSON missing required keys 'answer' and/or 'citations'."]
+            }
+        if not isinstance(result['answer'], str) or not isinstance(result['citations'], list):
+            return {
+                "answer": response_content,
+                "citations": [],
+                "validation_errors": ["Response JSON has incorrect types for 'answer' or 'citations'."]
+            }
+        return result
+    except json.JSONDecodeError:
+        return {
+            "answer": response_content,
+            "citations": [],
+            "validation_errors": ["Failed to parse JSON response"]
+        }
+
+def build_citation_entry(citation: Dict[str, Any], validation_result: Dict[str, Any]) -> Dict[str, Any]:
+    """Build a citation entry from validation result.
+    
+    Args:
+        citation: Raw citation dict from LLM with citation_id, source_id, quote
+        validation_result: Result from validate_citation()
+        
+    Returns:
+        Complete citation entry with URL and metadata
+    """
+    matched_text = validation_result.get("matched_text", citation.get("quote", ""))
+    highlighted_url = create_highlighted_url(
+        validation_result["url"], 
+        matched_text
+    )
+    citation_entry = {
+        "citation_id": citation.get("citation_id", 0),
+        "source_id": validation_result["source_id"],
+        "quote": citation.get("quote", ""),  # AI's claimed quote
+        "matched_text": matched_text,  # Actual text from source
+        "title": validation_result["title"],
+        "url": highlighted_url,
+        "similarity_score": validation_result["similarity_score"]
+    }
+    if validation_result.get("remapped"):
+        citation_entry["remapped_from"] = validation_result["original_source_id"]
+    return citation_entry
+
+def process_citations(citations: List[Dict[str, Any]], source_chunks: List[Any]) -> Dict[str, Any]:
+    """Validate and process a batch of citations.
+    
+    Args:
+        citations: List of citation dicts from LLM
+        source_chunks: List of source chunks from Qdrant
+        
+    Returns:
+        Dict with validated_citations and validation_errors lists
+    """
+    validated_citations = []
+    validation_errors = []
+    
+    for citation in citations:
+        quote = citation.get("quote", "")
+        source_id = citation.get("source_id", 0)
+        citation_id = citation.get("citation_id", 0)
+        
+        validation_result = validate_citation(quote, source_chunks, source_id)
+        
+        if validation_result["valid"]:
+            citation_entry = build_citation_entry(citation, validation_result)
+            validated_citations.append(citation_entry)
+        else:
+            validation_errors.append({
+                "citation_id": citation_id,
+                "reason": validation_result['reason'],
+                "claimed_quote": quote,
+                "source_text": validation_result.get('source_text')
+            })
+    
+    return {
+        "validated_citations": validated_citations,
+        "validation_errors": validation_errors
+    }
+
 def validate_citation(quote: str, source_chunks: List[Any], source_id: int) -> Dict[str, Any]:
     """Validate that a quote exists in the specified source chunk.
     
@@ -148,159 +242,6 @@ def validate_citation(quote: str, source_chunks: List[Any], source_id: int) -> D
         "source_id": source_id,
         "reason": f"Quote not found in any source (claimed source: {claimed_score:.1f}% similarity)",
         "source_text": source_chunks[source_id - 1].payload['text']
-    }
-
-
-def generate_answer_with_citations(
-    question: str, 
-    context: str, 
-    results: List[Any],
-    llm_model: str,
-    openai_api_key: str
-) -> Dict[str, Any]:
-    """Generate answer with structured citations using OpenAI.
-    
-    Args:
-        question: User's question
-        context: Formatted context from source chunks
-        results: Source chunks from Qdrant
-        llm_model: OpenAI model name
-        openai_api_key: OpenAI API key
-        
-    Returns:
-        Dict with answer and validated citations
-    """
-    client = OpenAI(api_key=openai_api_key)
-    
-    system_prompt = """Answer the user's question using ONLY the provided sources from 80,000 Hours articles.
-
-STEP 1: Write your answer
-- Write a clear, concise answer to the question
-- Use a natural, conversational tone
-- After EACH substantive claim, add [1], [2], [3], etc. in order
-- Example: "Career capital is important [1]. You can build it through work [2]."
-
-STEP 2: Provide citations
-- For each [N] in your answer, provide a citation with:
-  * citation_id: The number from your answer (1 for [1], 2 for [2], etc.)
-  * source_id: Which source it came from (see [Source N] in context below)
-  * quote: Copy the EXACT sentences from that source, word-for-word
-
-CRITICAL RULES:
-1. Number citations in ORDER: [1] is first, [2] is second, [3] is third, etc.
-2. Copy quotes EXACTLY - no changes, no ellipses, no paraphrasing
-3. Match source_id to where you found the quote ([Source 1] → source_id: 1)
-4. Each quote must be complete sentences from the source
-
-OUTPUT FORMAT (valid JSON):
-{
-  "answer": "Your answer with [1], [2], [3] after each claim.",
-  "citations": [
-    {
-      "citation_id": 1,
-      "source_id": 2,
-      "quote": "Exact sentence from the source."
-    },
-    {
-      "citation_id": 2,
-      "source_id": 5,
-      "quote": "Another exact sentence from a different source."
-    }
-  ]
-}"""
-
-    user_prompt = f"""Context from 80,000 Hours articles:
-
-{context}
-
-Question: {question}
-
-Provide your answer in JSON format with exact quotes from the sources."""
-
-    llm_call_start = time.time()
-    response = client.chat.completions.create(
-        model=llm_model,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
-        ],
-        response_format={"type": "json_object"}
-    )
-    print(f"[TIMING] OpenAI call: {(time.time() - llm_call_start)*1000:.2f}ms")
-    
-    # Parse the JSON response
-    try:
-        result = json.loads(response.choices[0].message.content)
-        # Enforce strict shape: must have 'answer' (str) and 'citations' (list of dicts)
-        if not isinstance(result, dict) or 'answer' not in result or 'citations' not in result:
-            return {
-                "answer": response.choices[0].message.content,
-                "citations": [],
-                "validation_errors": ["Response JSON missing required keys 'answer' and/or 'citations'."]
-            }
-        if not isinstance(result['answer'], str) or not isinstance(result['citations'], list):
-            return {
-                "answer": response.choices[0].message.content,
-                "citations": [],
-                "validation_errors": ["Response JSON has incorrect types for 'answer' or 'citations'."]
-            }
-        answer = result.get("answer", "")
-        citations = result.get("citations", [])
-    except json.JSONDecodeError:
-        return {
-            "answer": response.choices[0].message.content,
-            "citations": [],
-            "validation_errors": ["Failed to parse JSON response"]
-        }
-    
-
-    # Validate each citation
-    validation_start = time.time()
-    validated_citations = []
-    validation_errors = []
-    
-    for citation in citations:
-        quote = citation.get("quote", "")
-        source_id = citation.get("source_id", 0)
-        citation_id = citation.get("citation_id", 0)
-        
-        validation_result = validate_citation(quote, results, source_id)
-        
-        if validation_result["valid"]:
-            # Create URL with text fragment to highlight the matched text
-            matched_text = validation_result.get("matched_text", quote)
-            highlighted_url = create_highlighted_url(
-                validation_result["url"], 
-                matched_text
-            )
-            citation_entry = {
-                "citation_id": citation_id,
-                "source_id": validation_result["source_id"],
-                "quote": quote,  # AI's claimed quote
-                "matched_text": matched_text,  # Actual text from source
-                "title": validation_result["title"],
-                "url": highlighted_url,
-                "similarity_score": validation_result["similarity_score"]
-            }
-            if validation_result.get("remapped"):
-                citation_entry["remapped_from"] = validation_result["original_source_id"]
-            validated_citations.append(citation_entry)
-        else:
-            validation_errors.append({
-                "citation_id": citation_id,
-                "reason": validation_result['reason'],
-                "claimed_quote": quote,
-                "source_text": validation_result.get('source_text')
-            })
-    
-    print(f"[TIMING] Validation: {(time.time() - validation_start)*1000:.2f}ms")
-    
-    return {
-        "answer": answer,
-        "citations": validated_citations,
-        "validation_errors": validation_errors,
-        "total_citations": len(citations),
-        "valid_citations": len(validated_citations)
     }
 
 
