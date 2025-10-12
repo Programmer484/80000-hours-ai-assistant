@@ -1,19 +1,55 @@
+"""Query module for RAG system with background model loading."""
+
 import os
 import json
 import time
+import threading
 from typing import Dict, Any, List
+
 from dotenv import load_dotenv
 from openai import OpenAI
 from qdrant_client import QdrantClient
 from sentence_transformers import SentenceTransformer
+
 from citations import parse_llm_response, process_citations, format_citations_display
 from config import MODEL_NAME, COLLECTION_NAME
 
 load_dotenv()
 
+# ============================================================================
+# Configuration
+# ============================================================================
+
 LLM_MODEL = "gpt-4o"
 SOURCE_COUNT = 10
 SCORE_THRESHOLD = 0.4
+
+# ============================================================================
+# Background Model Loading
+# ============================================================================
+
+EMBEDDING_MODEL = None
+_model_loaded = threading.Event()
+
+def _load_model_background():
+    """Load the embedding model in a background thread."""
+    global EMBEDDING_MODEL
+    print("🔄 Loading embedding model in background...")
+    EMBEDDING_MODEL = SentenceTransformer(MODEL_NAME)
+    _model_loaded.set()
+    print("✅ Embedding model loaded!")
+
+def is_model_ready():
+    """Check if the embedding model is ready to use."""
+    return _model_loaded.is_set()
+
+# Start loading immediately when module is imported
+_loading_thread = threading.Thread(target=_load_model_background, daemon=True)
+_loading_thread.start()
+
+# ============================================================================
+# Context Retrieval
+# ============================================================================
 
 def retrieve_context(question):
     """Retrieve relevant chunks from Qdrant."""
@@ -24,8 +60,13 @@ def retrieve_context(question):
         api_key=os.getenv("QDRANT_API_KEY"),
     )
     
-    model = SentenceTransformer(MODEL_NAME)
-    query_vector = model.encode(question).tolist()
+    # Wait for model to be loaded (if still loading)
+    if not _model_loaded.is_set():
+        print("⏳ Waiting for embedding model to finish loading...")
+        if not _model_loaded.wait(timeout=120):
+            raise Exception("Model loading timeout - please try again")
+    
+    query_vector = EMBEDDING_MODEL.encode(question).tolist()
     
     results = client.query_points(
         collection_name=COLLECTION_NAME,
@@ -50,6 +91,10 @@ def format_context(results):
             f"Content: {hit.payload['text']}\n"
         )
     return "\n---\n".join(context_parts)
+
+# ============================================================================
+# LLM Answer Generation
+# ============================================================================
 
 def generate_answer_with_citations(
         question: str, 
@@ -161,6 +206,10 @@ def generate_answer_with_citations(
         "valid_citations": len(result["validated_citations"])
     }
 
+# ============================================================================
+# Results Processing & Display
+# ============================================================================
+
 def save_validation_results(question: str, result: Dict[str, Any], results: List[Any], _unused_time: float):
     """Save detailed validation results to JSON file for debugging."""
     validation_output = {
@@ -221,6 +270,10 @@ def display_results(question: str, result: Dict[str, Any], context: str = None):
     print("\n" + "=" * 80)
     print(f"Citation Stats: {result['valid_citations']}/{result['total_citations']} citations validated")
     print("=" * 80)
+
+# ============================================================================
+# Main Public API
+# ============================================================================
 
 def ask(question: str, show_context: bool = False) -> Dict[str, Any]:
     """Main RAG function: retrieve context and generate answer with validated citations."""

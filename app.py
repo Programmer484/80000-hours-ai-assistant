@@ -2,6 +2,11 @@ import gradio as gr
 import os
 from query import ask
 
+# Import query module (this starts loading the embedding model in background)
+print("🚀 Starting 80,000 Hours RAG system...")
+from query import is_model_ready
+print("✅ App ready! Model loading in background...")
+
 def chat_interface(question: str, show_context: bool = False):
     """Process question and return formatted response."""
     if not question.strip():
@@ -47,7 +52,7 @@ def chat_interface(question: str, show_context: bool = False):
                 matched_text = matched_text.replace('\n- ', '\n• ')
                 if matched_text.startswith('- '):
                     matched_text = '\n• ' + matched_text[2:]
-                citations_text += f"**Closest match in actual source** ({fuzzy_score:.1f}% fuzzy match):\n> \"{matched_text}\"\n\n"
+                citations_text += f"**Closest match in actual source** ({fuzzy_score:.1f}% match):\n> \"{matched_text}\"\n\n"
     
     # Add stats
     if result["citations"]:
@@ -64,8 +69,6 @@ with gr.Blocks(title="80,000 Hours Q&A", theme=gr.themes.Soft()) as demo:
         """
         # 🎯 80,000 Hours Career Advice Q&A
         Ask questions about career planning and get answers backed by citations from 80,000 Hours articles.
-        
-        This RAG system retrieves relevant content from the 80,000 Hours knowledge base and generates answers with validated citations.
         """
     )
 
@@ -110,7 +113,7 @@ with gr.Blocks(title="80,000 Hours Q&A", theme=gr.themes.Soft()) as demo:
             examples = [
                 "What skills will be most in demand in the next 5–10 years?",
                 "What careers will be most affected by AI?",
-                "How can I work on the world’s most pressing problems?",
+                "How can I work on the world's most pressing problems?",
                 "How do I figure out what I want to do with my life?",
             ],
         inputs=question_input
