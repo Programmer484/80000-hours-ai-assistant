@@ -79,7 +79,8 @@ with gr.Blocks(title="80,000 Hours Q&A", theme=gr.themes.Soft(), css="""
             "What skills will be most in demand in the next 5–10 years?",
             "How can I work on the world's most pressing problems?",
             "How do I figure out what I want to do with my life?",
-        ]
+        ],
+        cache_examples=False
     )
 
 # --- Launch Logic ---
