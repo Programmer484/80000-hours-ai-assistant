@@ -137,7 +137,7 @@ def generate_answer_with_citations(
         
         CRITICAL RULES:
         1. Number citations in ORDER: [1] is first, [2] is second, [3] is third, etc.
-        2. Copy quotes EXACTLY - no changes, no ellipses, no paraphrasing
+        2. Copy quotes EXACTLY - No changes, NO ellipses, No paraphrasing
         3. source_id MUST match the source number: [Source 1] → source_id: 1, [Source 5] → source_id: 5
         4. Each quote must be complete sentences from the source
 
@@ -303,7 +303,7 @@ def ask(question: str, show_context: bool = False) -> Dict[str, Any]:
     print(f"[TIMING] Total: {total_time:.0f}ms")
     
     # Display results
-    display_results(question, result, context if show_context else None)
+    # display_results(question, result, context if show_context else None)
     
     # Save debug output
     save_validation_results(question, result, results, 0)

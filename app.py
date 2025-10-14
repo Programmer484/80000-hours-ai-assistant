@@ -2,121 +2,84 @@ import gradio as gr
 import os
 from query import ask
 
-# Import query module (this starts loading the embedding model in background)
 print("🚀 Starting 80,000 Hours RAG system...")
 from query import is_model_ready
 print("✅ App ready! Model loading in background...")
 
-def chat_interface(question: str, show_context: bool = False):
-    """Process question and return formatted response."""
-    if not question.strip():
-        return "Please enter a question.", ""
+def chat_interface(message: str, history):
+    """Process question and return formatted response for chatbot.
     
-    result = ask(question, show_context=show_context)
+    Args:
+        message: User's question (string or dict with 'content' key)
+        history: Chat history (list of message dicts with 'role' and 'content')
+        
+    Returns:
+        Formatted response with answer and citations
+    """
+    # Handle both string and dict message formats
+    if isinstance(message, dict):
+        message = message.get('text', message.get('content', ''))
     
-    # Format main response
-    answer = result["answer"]
+    if not message or not message.strip():
+        return ""
     
-    # Format citations
-    citations_text = ""
+    result = ask(message, show_context=False)
+    
+    # Format response: answer first, then divider, then citations
+    response = result["answer"]
+    
+    # Add citations after divider
     if result["citations"]:
-        citations_text += "\n\n---\n\n### 📚 Citations\n\n"
+        response += "\n\n---\n\n**Citations:**\n\n"
         for i, citation in enumerate(result["citations"], 1):
-            # Use matched_text (actual source text) instead of AI's quote
-            display_text = citation.get('matched_text', citation['quote'])
-            # Replace markdown bullets with bullet character for display in quote block
-            display_text = display_text.replace('\n- ', '\n• ')
-            if display_text.startswith('- '):
-                display_text = '\n• ' + display_text[2:]
-            citations_text += f"**[{i}]** {citation['title']}\n\n"
-            citations_text += f"> \"{display_text}\"\n\n"
-            citations_text += f"🔗 [View highlighted quote on 80,000 Hours →]({citation['url']})\n\n"
+            # Replace bullet points in citation text with newline + bullet icon
+            response += f"**[{i}]** [{citation['title']}]({citation['url']})\n\n"
     
-    # Add validation warnings if any
-    if result.get("validation_errors"):
-        citations_text += "\n---\n\n### ⚠️ Validation Warnings\n\n"
-        for error in result["validation_errors"]:
-            fuzzy_score = error.get('fuzzy_match_score', 0)
-            citations_text += f"**[{error['citation_id']}]** {error['reason']}\n\n"
-            
-            # Format claimed quote (stored as 'quote' in validation result)
-            claimed_quote = error.get('quote', '')
-            claimed_quote = claimed_quote.replace('\n- ', '\n• ')
-            if claimed_quote.startswith('- '):
-                claimed_quote = '\n• ' + claimed_quote[2:]
-            citations_text += f"**AI's claimed quote:**\n> \"{claimed_quote}\"\n\n"
-            
-            # Format matched text from source
-            if error.get('matched_text'):
-                matched_text = error['matched_text']
-                matched_text = matched_text.replace('\n- ', '\n• ')
-                if matched_text.startswith('- '):
-                    matched_text = '\n• ' + matched_text[2:]
-                citations_text += f"**Closest match in actual source** ({fuzzy_score:.1f}% match):\n> \"{matched_text}\"\n\n"
-    
-    # Add stats
-    if result["citations"]:
-        valid_count = len([c for c in result["citations"] if c.get("validated", True)])
-        total_count = len(result["citations"])
-        citations_text += f"\n✓ {valid_count}/{total_count} citations validated"
-    
-    return answer, citations_text
+    return response
 
 
 # --- Build Gradio UI ---
-with gr.Blocks(title="80,000 Hours Q&A", theme=gr.themes.Soft()) as demo:
-    gr.Markdown(
-        """
-        # 🎯 80,000 Hours Career Advice Q&A
-        Ask questions about career planning and get answers backed by citations from 80,000 Hours articles.
-        """
-    )
-
-    with gr.Row():
-        with gr.Column():
-            question_input = gr.Textbox(
-                label="Your Question",
-                placeholder="e.g., Should I plan my entire career?",
-                lines=2
-            )
-            show_context_checkbox = gr.Checkbox(
-                label="Show retrieved context (for debugging)",
-                value=False
-            )
-            submit_btn = gr.Button("Ask", variant="primary")
-
-    with gr.Row():
-        with gr.Column():
-            answer_output = gr.Textbox(
-                label="Answer",
-                lines=10,
-                show_copy_button=True
-            )
-
-        with gr.Column():
-            citations_output = gr.Markdown(label="Citations & Sources")
-
-    # Event handlers
-    submit_btn.click(
+with gr.Blocks(title="80,000 Hours Q&A", theme=gr.themes.Soft(), css="""
+    footer {display: none !important;}
+    .examples button {
+        background: linear-gradient(to bottom, #ffffff, #f8f9fa) !important;
+        border: 2px solid #dee2e6 !important;
+        border-radius: 8px !important;
+        padding: 12px 16px !important;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05) !important;
+        transition: all 0.2s ease !important;
+    }
+    .examples button:hover {
+        border-color: #adb5bd !important;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1) !important;
+        transform: translateY(-1px) !important;
+    }
+""") as demo:
+    # Title section
+    gr.Markdown("# 80,000 Hours Q&A")
+    gr.Markdown("*Ask questions about career planning and get answers backed by citations from 80,000 Hours articles.*")
+    
+    gr.ChatInterface(
         fn=chat_interface,
-        inputs=[question_input, show_context_checkbox],
-        outputs=[answer_output, citations_output]
-    )
-
-    question_input.submit(
-        fn=chat_interface,
-        inputs=[question_input, show_context_checkbox],
-        outputs=[answer_output, citations_output]
-    )
-
-    gr.Examples(
-            examples = [
-                "What skills will be most in demand in the next 5–10 years?",
-                "What careers will be most affected by AI?",
-                "How can I work on the world's most pressing problems?",
-                "How do I figure out what I want to do with my life?",
-            ],
-        inputs=question_input
+        type="messages",
+        chatbot=gr.Chatbot(
+            height=400,
+            show_copy_button=True,
+            render_markdown=True,
+            layout="bubble",
+            type="messages"
+        ),
+        textbox=gr.MultimodalTextbox(
+            placeholder="Ask about career planning...",
+            show_label=False,
+            submit_btn=True,
+            sources=[]
+        ),
+        examples=[
+            "What skills will be most in demand in the next 5–10 years?",
+            "How can I work on the world's most pressing problems?",
+            "How do I figure out what I want to do with my life?",
+        ]
     )
 
 # --- Launch Logic ---

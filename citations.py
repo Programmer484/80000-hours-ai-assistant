@@ -144,33 +144,93 @@ def process_citations(citations: List[Dict[str, Any]], source_chunks: List[Any])
         "validation_errors": validation_errors
     }
 
-def _expand_to_word_boundaries(text: str, start: int, end: int) -> Tuple[int, int]:
-    """Expand alignment boundaries to include complete words.
+def _is_word_char(char: str) -> bool:
+    """Check if character is part of a word (alphanumeric, comma, hyphen, apostrophe)."""
+    return char.isalnum() or char in (',', '-', "'", "'")
+
+def _find_best_match_position(quote: str, source_text: str, alignment_hint=None) -> Tuple[int, int, float]:
+    """Find the best matching position for a quote in source text using sliding window.
     
-    Handles hyphenated words (e.g., "long-term"), contractions (e.g., "don't"),
-    and possessives (e.g., "company's").
+    This method is better than partial_ratio_alignment because it:
+    1. Uses word boundaries naturally
+    2. Finds the best matching substring at the token level
+    3. Returns positions that align with actual text segments
     
     Args:
-        text: The full source text
-        start: Start position from alignment
-        end: End position from alignment
+        quote: The text to find
+        source_text: The text to search in
+        alignment_hint: Optional alignment result from partial_ratio_alignment to focus search
         
     Returns:
-        Tuple of (expanded_start, expanded_end)
+        Tuple of (start_pos, end_pos, score). Returns (-1, -1, 0) if no good match.
     """
-    def is_word_char(char: str) -> bool:
-        """Check if character is part of a word (alphanumeric, hyphen, or apostrophe)."""
-        return char.isalnum() or char in ("-", "'")
+    import re
     
-    # Expand start backward to beginning of word
-    while start > 0 and is_word_char(text[start - 1]):
-        start -= 1
+    # Normalize whitespace for matching
+    quote_normalized = ' '.join(quote.split())
     
-    # Expand end forward to end of word
-    while end < len(text) and is_word_char(text[end]):
-        end += 1
+    # Split source into words with their positions
+    # This regex splits on whitespace while preserving positions
+    word_pattern = re.compile(r'\S+')
+    source_words = []
+    for match in word_pattern.finditer(source_text):
+        source_words.append({
+            'word': match.group(),
+            'start': match.start(),
+            'end': match.end()
+        })
     
-    return start, end
+    quote_words = quote_normalized.split()
+    
+    if not quote_words or not source_words:
+        return -1, -1, 0
+    
+    # Determine search range based on alignment hint
+    if alignment_hint:
+        # Find which word index contains the alignment position
+        center_word_idx = 0
+        for idx, word_info in enumerate(source_words):
+            if word_info['start'] <= alignment_hint.dest_start < word_info['end']:
+                center_word_idx = idx
+                break
+        
+        # Search within +/- 5 words of the hint position
+        search_start_idx = max(0, center_word_idx - 5)
+        search_end_idx = min(len(source_words), center_word_idx + len(quote_words) + 5)
+    else:
+        # No hint found, search entire text (fallback)
+        search_start_idx = 0
+        search_end_idx = len(source_words)
+    
+    best_score = 0
+    best_start = -1
+    best_end = -1
+    
+    # Try different window sizes around the quote length
+    # Quote should never be longer than source, so only check smaller windows
+    min_window = max(1, len(quote_words) - 3)
+    max_window = min(search_end_idx - search_start_idx, len(quote_words))
+    
+    for window_size in range(min_window, max_window + 1):
+        for i in range(search_start_idx, min(search_end_idx - window_size + 1, len(source_words) - window_size + 1)):
+            # Get window of words
+            window_words = [source_words[j]['word'] for j in range(i, i + window_size)]
+            window_text = ' '.join(window_words)
+            
+            # Calculate similarity score
+            score = fuzz.ratio(quote_normalized, window_text)
+            
+            if score > best_score:
+                best_score = score
+                # Use the start of the first word and end of the last word
+                best_start = source_words[i]['start']
+                best_end = source_words[i + window_size - 1]['end']
+                
+                # Strip trailing punctuation from the end position
+                while best_end > best_start and source_text[best_end - 1] in '.,;:!?)':
+                    best_end -= 1
+    
+    return best_start, best_end, best_score
 
 def _build_valid_result(quote: str, chunk: Any, chunk_id: int, score: float, 
                         matched_text: str, remapped: bool = False) -> Dict[str, Any]:
@@ -208,35 +268,42 @@ def validate_citation(quote: str, source_chunks: List[Any], source_id: int) -> D
             "source_text": None
         }
     
+    # If quote contains ellipsis, only match the part before it
+    if '...' in quote:
+        quote = quote.split('...')[0].strip()
+    
     # Step 1: Check the AI's cited source first (fast path)
     source_text = source_chunks[source_id - 1].payload['text']
-    primary_alignment = fuzz.partial_ratio_alignment(quote, source_text, score_cutoff=FUZZY_THRESHOLD)
     
-    if primary_alignment:
-        # Expand to word boundaries to avoid cutting off partial words
-        start, end = _expand_to_word_boundaries(source_text, primary_alignment.dest_start, primary_alignment.dest_end)
+    # Get alignment hint from partial_ratio_alignment
+    alignment_hint = fuzz.partial_ratio_alignment(quote, source_text, score_cutoff=70)
+    start, end, score = _find_best_match_position(quote, source_text, alignment_hint)
+    
+    if score >= FUZZY_THRESHOLD and start != -1:
         matched_text = source_text[start:end].strip()
-        return _build_valid_result(quote, source_chunks[source_id - 1], source_id, primary_alignment.score, matched_text)
+        return _build_valid_result(quote, source_chunks[source_id - 1], source_id, score, matched_text)
     
     # Step 2: Search other sources for remapping (AI cited wrong source)
     for idx, chunk in enumerate(source_chunks, 1):
         if idx == source_id:
             continue  # Already checked
-        other_alignment = fuzz.partial_ratio_alignment(quote, chunk.payload['text'], score_cutoff=FUZZY_THRESHOLD)
-        if other_alignment:
-            # Expand to word boundaries to avoid cutting off partial words
-            start, end = _expand_to_word_boundaries(chunk.payload['text'], other_alignment.dest_start, other_alignment.dest_end)
+        
+        # Get alignment hint for this chunk
+        alignment_hint = fuzz.partial_ratio_alignment(quote, chunk.payload['text'], score_cutoff=70)
+        start, end, score = _find_best_match_position(quote, chunk.payload['text'], alignment_hint)
+        if score >= FUZZY_THRESHOLD and start != -1:
             matched_text = chunk.payload['text'][start:end].strip()
-            return _build_valid_result(quote, chunk, idx, other_alignment.score, matched_text, remapped=True)
+            return _build_valid_result(quote, chunk, idx, score, matched_text, remapped=True)
     
     # Validation failed - find closest match for debugging
     matched_text = ""
     actual_score = 0
     try:
-        debug_alignment = fuzz.partial_ratio_alignment(quote, source_text, score_cutoff=70)
-        if debug_alignment:
-            matched_text = source_text[debug_alignment.dest_start:debug_alignment.dest_end].strip()
-            actual_score = debug_alignment.score
+        debug_hint = fuzz.partial_ratio_alignment(quote, source_text, score_cutoff=60)
+        debug_start, debug_end, debug_score = _find_best_match_position(quote, source_text, debug_hint)
+        if debug_score >= 70 and debug_start != -1:
+            matched_text = source_text[debug_start:debug_end].strip()
+            actual_score = debug_score
     except:
         pass
     
