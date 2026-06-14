@@ -3,7 +3,7 @@ import os
 from dotenv import load_dotenv
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams, PointStruct
-from sentence_transformers import SentenceTransformer
+from openai import OpenAI
 from config import MODEL_NAME, COLLECTION_NAME, EMBEDDING_DIM
 
 load_dotenv()
@@ -23,8 +23,8 @@ def create_qdrant_client():
     )
 
 def load_embedding_model():
-    print("Loading embedding model...")
-    return SentenceTransformer(MODEL_NAME)
+    print("Initializing OpenAI client...")
+    return OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 def create_collection(client, collection_name=COLLECTION_NAME, embedding_dim=EMBEDDING_DIM):
     print(f"Creating collection '{collection_name}'...")
@@ -42,17 +42,31 @@ def create_collection(client, collection_name=COLLECTION_NAME, embedding_dim=EMB
         print(f"Error creating collection: {e}")
         return False
 
-def generate_embeddings(model, chunks):
-    print("Generating embeddings...")
+def generate_embeddings(client, chunks):
+    print("Generating embeddings via OpenAI...")
     texts = [chunk["text"] for chunk in chunks]
-    return model.encode(texts, show_progress_bar=True)
+    
+    # OpenAI recommends batching, maximum 2048 at a time for text-embedding-3
+    embeddings = []
+    batch_size = 500
+    
+    for i in range(0, len(texts), batch_size):
+        batch_texts = texts[i:i + batch_size]
+        print(f"  Embedding batch {i//batch_size + 1}...")
+        response = client.embeddings.create(
+            input=batch_texts,
+            model=MODEL_NAME
+        )
+        embeddings.extend([data.embedding for data in response.data])
+        
+    return embeddings
 
 def create_points(chunks, embeddings):
     points = []
     for idx, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
         point = PointStruct(
             id=idx,
-            vector=embedding.tolist(),
+            vector=embedding,
             payload={
                 "url": chunk["url"],
                 "title": chunk["title"],

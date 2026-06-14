@@ -2,7 +2,7 @@ import json
 import os
 from llama_index.core.node_parser import SemanticSplitterNodeParser
 from llama_index.core.schema import Document
-from llama_index.embeddings.huggingface import HuggingFaceEmbedding
+from llama_index.embeddings.openai import OpenAIEmbedding
 from config import MODEL_NAME
 
 BUFFER_SIZE = 3
@@ -31,7 +31,7 @@ def chunk_text_semantic(text, embed_model):
 def make_jsonl(articles, out_path="chunks.jsonl"):
     """Create JSONL with semantic chunks from multiple articles."""
     print("Loading embedding model for semantic chunking...")
-    embed_model = HuggingFaceEmbedding(model_name=MODEL_NAME)
+    embed_model = OpenAIEmbedding(model=MODEL_NAME)
     
     with open(out_path, "w", encoding="utf-8") as f:
         for idx, article in enumerate(articles, 1):
@@ -74,7 +74,7 @@ def chunk_from_json_files(input_folder=INPUT_FOLDER, output_file=OUTPUT_FILE):
     
     print(f"\nTotal articles to chunk: {len(all_articles)}")
     print("Loading embedding model for semantic chunking...")
-    embed_model = HuggingFaceEmbedding(model_name=MODEL_NAME)
+    embed_model = OpenAIEmbedding(model=MODEL_NAME)
     
     chunk_count = 0
     with open(output_file, "w", encoding="utf-8") as f:

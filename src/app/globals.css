@@ -1,0 +1,45 @@
+@import "tailwindcss";
+
+@theme {
+  --background: 240 10% 3.9%;
+  --foreground: 0 0% 98%;
+  --card: 240 10% 3.9%;
+  --card-foreground: 0 0% 98%;
+  --popover: 240 10% 3.9%;
+  --popover-foreground: 0 0% 98%;
+  --primary: 0 0% 98%;
+  --primary-foreground: 240 5.9% 10%;
+  --secondary: 240 3.7% 15.9%;
+  --secondary-foreground: 0 0% 98%;
+  --muted: 240 3.7% 15.9%;
+  --muted-foreground: 240 5% 64.9%;
+  --accent: 240 3.7% 15.9%;
+  --accent-foreground: 0 0% 98%;
+  --destructive: 0 62.8% 30.6%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 240 3.7% 15.9%;
+  --input: 240 3.7% 15.9%;
+  --ring: 240 4.9% 83.9%;
+}
+
+* {
+  border-color: var(--border);
+}
+
+body {
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+.markdown-body h1 { font-size: 1.5rem; font-weight: 700; margin-top: 1.5rem; margin-bottom: 1rem; }
+.markdown-body h2 { font-size: 1.25rem; font-weight: 700; margin-top: 1.25rem; margin-bottom: 0.75rem; }
+.markdown-body h3 { font-size: 1.125rem; font-weight: 700; margin-top: 1rem; margin-bottom: 0.5rem; }
+.markdown-body p { margin-bottom: 1rem; line-height: 1.625; }
+.markdown-body ul { list-style-type: disc; padding-left: 1.25rem; margin-bottom: 1rem; }
+.markdown-body ol { list-style-type: decimal; padding-left: 1.25rem; margin-bottom: 1rem; }
+.markdown-body li { margin-bottom: 0.25rem; }
+.markdown-body a { color: #60a5fa; text-decoration: none; }
+.markdown-body a:hover { text-decoration: underline; }
+.markdown-body hr { margin-top: 1.5rem; margin-bottom: 1.5rem; border-color: #374151; }
+.markdown-body strong { font-weight: 600; color: #ffffff; }
