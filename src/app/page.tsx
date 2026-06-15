@@ -105,7 +105,7 @@ export default function ChatPage() {
         </div>
       </header>
 
-      <main className="flex-1 overflow-y-auto p-4 sm:p-6 pb-48">
+      <main className="flex-1 overflow-y-auto p-4 sm:p-6 pb-56">
         <div className="max-w-3xl mx-auto space-y-10">
           {messages.map((msg, i) => (
             <div key={i} className="flex w-full">
