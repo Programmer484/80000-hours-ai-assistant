@@ -1,6 +1,7 @@
 """Query module for RAG system with background model loading."""
 
 import os
+import re
 import json
 import time
 import threading
@@ -99,6 +100,37 @@ def format_context(results):
 # ============================================================================
 # LLM Answer Generation
 # ============================================================================
+
+def reconcile_citation_markers(answer: str, validated_citations: List[Dict[str, Any]]):
+    """Reconcile in-text [N] markers with the citations that survived validation.
+
+    A marker whose citation was dropped during validation (quote didn't match a
+    source) would otherwise render as raw "[5]" text with no link. This removes
+    those orphaned markers and renumbers the survivors sequentially, so every
+    visible [N] maps to a real, clickable citation and the numbering has no gaps.
+
+    Returns (cleaned_answer, renumbered_citations).
+    """
+    by_id = {c["citation_id"]: c for c in validated_citations}
+    new_citations: List[Dict[str, Any]] = []
+
+    def repl(match: "re.Match") -> str:
+        old_id = int(match.group(1))
+        cit = by_id.get(old_id)
+        if cit is None:
+            return ""  # orphaned marker -> drop it
+        new_id = len(new_citations) + 1
+        renumbered = dict(cit)
+        renumbered["citation_id"] = new_id
+        new_citations.append(renumbered)
+        return f"[{new_id}]"
+
+    cleaned = re.sub(r"\[(\d+)\]", repl, answer)
+    # Tidy whitespace left behind by removed markers ("text  ." -> "text.")
+    cleaned = re.sub(r"\s+([.,;:!?])", r"\1", cleaned)
+    cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
+    return cleaned, new_citations
+
 
 def generate_answer_with_citations(
         question: str,
@@ -215,13 +247,19 @@ def generate_answer_with_citations(
     result = process_citations(citations, results)
     validation_time = (time.time() - validation_start) * 1000
     print(f"[TIMING] Validation: {validation_time:.0f}ms")
-    
+
+    # Drop in-text markers whose citation didn't survive validation and renumber
+    # the rest, so every visible [N] is a real, clickable, sequential citation.
+    answer, validated_citations = reconcile_citation_markers(
+        answer, result["validated_citations"]
+    )
+
     return {
         "answer": answer,
-        "citations": result["validated_citations"],
+        "citations": validated_citations,
         "validation_errors": result["validation_errors"],
         "total_citations": len(citations),
-        "valid_citations": len(result["validated_citations"])
+        "valid_citations": len(validated_citations)
     }
 
 # ============================================================================
