@@ -8,6 +8,7 @@ from typing import Dict, Any, List
 
 from dotenv import load_dotenv
 from openai import OpenAI
+import anthropic
 from qdrant_client import QdrantClient
 
 from citations import parse_llm_response, process_citations, format_citations_display
@@ -19,9 +20,33 @@ load_dotenv()
 # Configuration
 # ============================================================================
 
-LLM_MODEL = "gpt-4o"
+LLM_MODEL = "claude-sonnet-4-6"
 SOURCE_COUNT = 10
 SCORE_THRESHOLD = 0.4
+
+# JSON schema for structured synthesis output (enforced via output_config.format).
+# Guarantees a parseable shape so citation validation never sees malformed JSON.
+CITATION_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "answer": {"type": "string"},
+        "citations": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "citation_id": {"type": "integer"},
+                    "source_id": {"type": "integer"},
+                    "quote": {"type": "string"},
+                },
+                "required": ["citation_id", "source_id", "quote"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    "required": ["answer", "citations"],
+    "additionalProperties": False,
+}
 
 # ============================================================================
 # Context Retrieval
@@ -76,26 +101,26 @@ def format_context(results):
 # ============================================================================
 
 def generate_answer_with_citations(
-        question: str, 
-        context: str, 
+        question: str,
+        context: str,
         results: List[Any],
         llm_model: str,
-        openai_api_key: str
+        anthropic_api_key: str
     ) -> Dict[str, Any]:
-    """Generate answer with structured citations using OpenAI.
-    
+    """Generate answer with structured citations using Anthropic Claude.
+
     Args:
         question: User's question
         context: Formatted context from source chunks
         results: Source chunks from Qdrant
-        llm_model: OpenAI model name
-        openai_api_key: OpenAI API key
-        
+        llm_model: Anthropic model name
+        anthropic_api_key: Anthropic API key
+
     Returns:
         Dict with answer and validated citations
     """
-    client = OpenAI(api_key=openai_api_key)
-    
+    client = anthropic.Anthropic(api_key=anthropic_api_key)
+
     system_prompt = """Answer the user's question using ONLY the provided sources from 80,000 Hours articles.
 
         STEP 1: Write your answer
@@ -146,19 +171,23 @@ def generate_answer_with_citations(
         Provide your answer in JSON format with exact quotes from the sources."""
 
     llm_start = time.time()
-    response = client.chat.completions.create(
+    response = client.messages.create(
         model=llm_model,
+        max_tokens=4096,
+        system=system_prompt,
         messages=[
-            {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt}
         ],
-        response_format={"type": "json_object"}
+        output_config={"format": {"type": "json_schema", "schema": CITATION_SCHEMA}},
     )
     llm_time = (time.time() - llm_start) * 1000
     print(f"[TIMING] LLM call: {llm_time:.0f}ms")
-    
+
+    # output_config.format guarantees the first text block is valid JSON
+    response_text = next(b.text for b in response.content if b.type == "text")
+
     # Parse LLM response
-    parsed = parse_llm_response(response.choices[0].message.content)
+    parsed = parse_llm_response(response_text)
     if "validation_errors" in parsed:
         return {
             "answer": parsed["answer"], # raw llm response
@@ -275,7 +304,7 @@ def ask(question: str, show_context: bool = False) -> Dict[str, Any]:
         context=context,
         results=results,
         llm_model=LLM_MODEL,
-        openai_api_key=os.getenv("OPENAI_API_KEY")
+        anthropic_api_key=os.getenv("ANTHROPIC_API_KEY")
     )
     
     total_time = (time.time() - total_start) * 1000

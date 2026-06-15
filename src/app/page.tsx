@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import ReactMarkdown from 'react-markdown';
+import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
 
 type Citation = {
   citation_id: number;
@@ -17,6 +17,25 @@ type Message = {
   content: string;
   citations?: Citation[];
 };
+
+// Build a URL that scrolls to and highlights the exact cited text in the article
+// using the Text Fragments spec (#:~:text=). We strip any fragment the backend
+// already added so we don't end up with a broken double `#:~:text=`.
+function buildCitationHref(cit: Citation): string {
+  const base = cit.url.split('#')[0];
+  const text = (cit.matched_text || cit.quote || '').trim();
+  if (!text) return base;
+  // Text fragments require -, &, and , to be percent-encoded within each text part.
+  const enc = (s: string) => encodeURIComponent(s).replace(/-/g, '%2D');
+  const words = text.split(/\s+/);
+  // Long quotes can span block boundaries and fail to match, so anchor with
+  // textStart,textEnd instead of the full string.
+  const fragment =
+    words.length > 12
+      ? `${enc(words.slice(0, 5).join(' '))},${enc(words.slice(-5).join(' '))}`
+      : enc(text);
+  return `${base}#:~:text=${fragment}`;
+}
 
 export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([
@@ -100,6 +119,11 @@ export default function ChatPage() {
                 ) : (
                   <div className="markdown-body text-[15px] leading-relaxed max-w-full">
                     <ReactMarkdown
+                      // Default url transform strips the custom `citation:` scheme
+                      // (returns ''), which would break our inline citation links.
+                      urlTransform={(url) =>
+                        url.startsWith('citation:') ? url : defaultUrlTransform(url)
+                      }
                       components={{
                         a: ({ node, ...props }) => {
                           const href = props.href || '';
@@ -108,25 +132,27 @@ export default function ChatPage() {
                             const cit = msg.citations?.find(c => c.citation_id === id);
                             if (!cit) return <span className="text-gray-400">[{id}]</span>;
                             
+                            const jumpHref = buildCitationHref(cit);
                             return (
                               <span className="relative group inline-block mx-0.5">
                                 <a
-                                  href={cit.url}
+                                  href={jumpHref}
                                   target="_blank"
                                   rel="noreferrer"
+                                  title={cit.matched_text || cit.quote}
                                   className="inline-flex items-center justify-center w-5 h-5 text-[10px] font-medium bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-full no-underline transition-colors focus:outline-none focus:ring-2 focus:ring-gray-400"
                                 >
                                   {id}
                                 </a>
-                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-72 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-xl p-4 opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 pointer-events-none group-hover:pointer-events-auto transition-all duration-200 z-50 origin-bottom">
-                                  <p className="text-sm text-gray-600 dark:text-gray-300 italic mb-3 line-clamp-4">
+                                <span className="block absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-72 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-xl p-4 opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 pointer-events-none group-hover:pointer-events-auto transition-all duration-200 z-50 origin-bottom">
+                                  <span className="block text-sm text-gray-600 dark:text-gray-300 italic mb-3 line-clamp-4">
                                     "{cit.matched_text || cit.quote}"
-                                  </p>
-                                  <a href={cit.url} target="_blank" rel="noreferrer" className="text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline block truncate no-underline">
+                                  </span>
+                                  <a href={jumpHref} target="_blank" rel="noreferrer" className="text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline block truncate no-underline">
                                     {cit.title} →
                                   </a>
-                                  <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-white dark:bg-gray-900 border-b border-r border-gray-200 dark:border-gray-800 rotate-45"></div>
-                                </div>
+                                  <span className="block absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-white dark:bg-gray-900 border-b border-r border-gray-200 dark:border-gray-800 rotate-45"></span>
+                                </span>
                               </span>
                             );
                           }
