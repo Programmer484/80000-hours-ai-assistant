@@ -58,6 +58,8 @@ export default function ChatPage() {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const footerRef = useRef<HTMLElement>(null);
+  const [footerHeight, setFooterHeight] = useState(0);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -66,6 +68,20 @@ export default function ChatPage() {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  // Reserve exactly the footer's rendered height as bottom padding so the last
+  // message is never covered by the fixed input bar. Measuring (rather than a
+  // fixed pb-* class) keeps this correct at any zoom level, viewport size,
+  // multi-line input, or when the examples row shows/hides.
+  useEffect(() => {
+    const el = footerRef.current;
+    if (!el) return;
+    const update = () => setFooterHeight(el.offsetHeight);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -116,7 +132,10 @@ export default function ChatPage() {
         </div>
       </header>
 
-      <main className="flex-1 overflow-y-auto p-4 sm:p-6 pb-56">
+      <main
+        className="flex-1 overflow-y-auto p-4 sm:p-6"
+        style={{ paddingBottom: footerHeight ? footerHeight + 24 : undefined }}
+      >
         <div className="max-w-3xl mx-auto space-y-10">
           {messages.map((msg, i) => (
             <div key={i} className="flex w-full">
@@ -191,7 +210,7 @@ export default function ChatPage() {
         </div>
       </main>
 
-      <footer className="fixed bottom-0 left-0 right-0 bg-gradient-to-t from-white via-white dark:from-[#0a0a0a] dark:via-[#0a0a0a] to-transparent pt-10 pb-6 px-4">
+      <footer ref={footerRef} className="fixed bottom-0 left-0 right-0 bg-gradient-to-t from-white via-white dark:from-[#0a0a0a] dark:via-[#0a0a0a] to-transparent pt-10 pb-6 px-4">
         <div className="max-w-3xl mx-auto space-y-4">
           {messages.length === 1 && (
             <div className="flex flex-wrap gap-2 justify-center mb-6">
