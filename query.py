@@ -213,7 +213,7 @@ def save_validation_results(question: str, result: Dict[str, Any], results: List
         ]
     }
     
-    with open("validation_results.json", "w", encoding="utf-8") as f:
+    with open("/tmp/validation_results.json", "w", encoding="utf-8") as f:
         json.dump(validation_output, f, ensure_ascii=False, indent=2)
     print("\n[INFO] Validation results saved to validation_results.json")
 
