@@ -1,36 +1,47 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 80k RAG Assistant
+
+An AI career assistant that answers questions using a RAG pipeline over 80,000 Hours
+articles, with inline, verifiable citations that link to the exact text in the source.
+
+- **Frontend:** Next.js (App Router) + React + Tailwind
+- **Backend:** FastAPI (`api/index.py`) — a Python serverless function on Vercel
+- **Retrieval:** Qdrant vector search + OpenAI embeddings (`text-embedding-3-small`)
+- **Generation:** Anthropic Claude (`claude-sonnet-4-6`) with structured, validated citations
 
 ## Getting Started
 
-First, run the development server:
+### Prerequisites
+
+- Node.js + npm
+- Python 3.12 with the virtualenv set up:
+  ```bash
+  python3 -m venv venv
+  venv/bin/pip install -r requirements.txt
+  ```
+- A `.env` file with: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `QDRANT_URL`, `QDRANT_API_KEY`
+
+### Run the dev servers
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+This starts **both** servers together via `concurrently`:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- `web` — Next.js on http://localhost:3000
+- `api` — FastAPI/uvicorn on http://localhost:8000
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+In development, Next proxies `/api/*` to the local Python backend (see the dev-only
+`rewrites()` in `next.config.ts`). In production on Vercel, that proxy is a no-op and the
+`vercel.json` rewrite routes `/api/*` to the Python function instead.
 
-## Learn More
+> Note: `vercel dev` is not used — it doesn't run the Python function with this
+> Next.js 16 + Turbopack setup. The two-process script above is the supported workflow.
 
-To learn more about Next.js, take a look at the following resources:
+Run a single side if needed: `npm run dev:web` or `npm run dev:api`.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Deploy
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Deployed on Vercel. `requirements.txt` defines the Python function's dependencies and
+`vercel.json` handles `/api/*` routing.
