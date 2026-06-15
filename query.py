@@ -126,21 +126,31 @@ def generate_answer_with_citations(
         STEP 1: Write your answer
         - Write a clear, concise answer to the question
         - Use a natural, conversational tone
-        - After EACH substantive claim, add [1], [2], [3], etc. in order
+        - After EACH substantive claim, add a citation marker
+        - The marker is a running counter: the first marker is ALWAYS [1], the
+          second is ALWAYS [2], the third [3], and so on — strictly increasing by 1
+        - NEVER reuse a number. Even when two claims come from the SAME source,
+          they still get different, sequential numbers (e.g. [1] then [2]).
         - Example: "Career capital is important [1]. You can build it through work [2]."
 
         STEP 2: Provide citations
         - For each [N] in your answer, provide a citation with:
-        * citation_id: The number from your answer (1 for [1], 2 for [2], etc.)
+        * citation_id: The number from your answer (1 for [1], 2 for [2], etc.) - matches the marker exactly
         * source_id: Which source it came from (match the [Source N] label exactly)
         * quote: Copy the EXACT sentences from that source, word-for-word
+        - citation_id is the position of the marker in your answer and is UNIQUE.
+          source_id is the source the quote came from and MAY repeat across citations.
 
-        EXAMPLE - If you found text in [Source 3]:
-        - Your answer: "Career capital helps you succeed [1]."
-        - Your citation: {"citation_id": 1, "source_id": 3, "quote": "Career capital includes..."}
-        
+        EXAMPLE - two claims, both from [Source 3]:
+        - Your answer: "Career capital helps you succeed [1]. It compounds over time [2]."
+        - Your citations:
+          {"citation_id": 1, "source_id": 3, "quote": "Career capital includes..."}
+          {"citation_id": 2, "source_id": 3, "quote": "It compounds over time because..."}
+          (Note: same source_id 3, but DIFFERENT sequential citation_ids 1 and 2.)
+
         CRITICAL RULES:
-        1. Number citations in ORDER: [1] is first, [2] is second, [3] is third, etc.
+        1. citation_id is a strictly increasing counter starting at 1, incrementing by 1
+           for every marker, with NO gaps and NO repeats - even for the same source.
         2. Copy quotes EXACTLY - No changes, NO ellipses, No paraphrasing
         3. source_id MUST match the source number: [Source 1] → source_id: 1, [Source 5] → source_id: 5
         4. Each quote must be complete sentences from the source
