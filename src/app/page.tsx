@@ -195,7 +195,7 @@ export default function ChatPage() {
               ))}
             </div>
           )}
-          <form onSubmit={handleSubmit} className="relative flex items-center shadow-sm">
+          <form onSubmit={handleSubmit} className="relative flex items-center rounded-3xl shadow-sm">
             <input
               type="text"
               value={input}
