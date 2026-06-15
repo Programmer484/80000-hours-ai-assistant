@@ -14,10 +14,14 @@ async def chat_endpoint(request: ChatRequest):
     if not request.message or not request.message.strip():
         return {"response": ""}
     
-    result = ask(request.message, show_context=False)
-    
-    response = result["answer"]
-    citations = result.get("citations", [])
+    import traceback
+    try:
+        result = ask(request.message, show_context=False)
+        response = result["answer"]
+        citations = result.get("citations", [])
+    except Exception as e:
+        error_msg = f"Exception: {str(e)}\n\nTraceback: {traceback.format_exc()}"
+        return {"response": error_msg, "citations": []}
     
     # Replace [1], [2] with markdown links [1](citation:1)
     if citations:
