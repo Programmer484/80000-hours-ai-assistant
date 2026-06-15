@@ -42,4 +42,4 @@ body {
 .markdown-body a { color: #60a5fa; text-decoration: none; }
 .markdown-body a:hover { text-decoration: underline; }
 .markdown-body hr { margin-top: 1.5rem; margin-bottom: 1.5rem; border-color: #374151; }
-.markdown-body strong { font-weight: 600; color: #ffffff; }
+.markdown-body strong { font-weight: 600; color: inherit; }
