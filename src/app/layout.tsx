@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "80k RAG Assistant",
+  title: "80,000 Hours AI Assistant",
   description: "AI career assistant trained on 80,000 Hours articles",
 };
 
