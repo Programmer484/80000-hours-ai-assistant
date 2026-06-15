@@ -7,6 +7,8 @@ app = FastAPI(title="80,000 Hours AI API")
 class ChatRequest(BaseModel):
     message: str
 
+import re
+
 @app.post("/api/chat")
 async def chat_endpoint(request: ChatRequest):
     if not request.message or not request.message.strip():
@@ -15,10 +17,14 @@ async def chat_endpoint(request: ChatRequest):
     result = ask(request.message, show_context=False)
     
     response = result["answer"]
+    citations = result.get("citations", [])
     
-    if result["citations"]:
-        response += "\n\n---\n\n**Citations:**\n\n"
-        for i, citation in enumerate(result["citations"], 1):
-            response += f"**[{i}]** [{citation['title']}]({citation['url']})\n\n"
+    # Replace [1], [2] with markdown links [1](citation:1)
+    if citations:
+        for cit in citations:
+            cid = cit.get("citation_id")
+            if cid:
+                # Use regex to replace exactly [1], avoiding things like [10] when cid=1
+                response = re.sub(rf'\[{cid}\]', f'[{cid}](citation:{cid})', response)
             
-    return {"response": response}
+    return {"response": response, "citations": citations}
