@@ -23,8 +23,19 @@ type Message = {
 // already added so we don't end up with a broken double `#:~:text=`.
 function buildCitationHref(cit: Citation): string {
   const base = cit.url.split('#')[0];
-  const text = (cit.matched_text || cit.quote || '').trim();
+  let text = (cit.matched_text || cit.quote || '').trim();
   if (!text) return base;
+  // Chunks flatten an article heading and its paragraph into one string joined
+  // by `|`. Per the Text Fragments spec, textStart/textEnd must each reside
+  // wholly inside ONE block-level element, so a phrase spanning the heading→
+  // paragraph boundary (the `|`) never matches. Anchor inside the longest
+  // pipe-delimited segment (the real paragraph) instead.
+  if (text.includes('|')) {
+    text = text
+      .split('|')
+      .map((s) => s.trim())
+      .reduce((a, b) => (b.length > a.length ? b : a), '');
+  }
   // Text fragments require -, &, and , to be percent-encoded within each text part.
   const enc = (s: string) => encodeURIComponent(s).replace(/-/g, '%2D');
   const words = text.split(/\s+/);
